@@ -232,7 +232,9 @@ export class DiffViewerManager {
     if (existing) {
       existing.title = spec.title;
       existing.webview.html = this.html(existing.webview, spec);
-      existing.reveal(existing.viewColumn, true);
+      // Take focus, as a newly created panel does: the diff's own keys (F7,
+      // Alt+Arrow) only reach it once it holds focus.
+      existing.reveal(existing.viewColumn, false);
       return;
     }
 
