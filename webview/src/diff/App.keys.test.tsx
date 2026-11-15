@@ -101,6 +101,22 @@ describe("diff keyboard bindings", () => {
     input.remove();
   });
 
+  it("steps with F7 and Alt+Arrow while the editor holds the caret", async () => {
+    // A working-tree diff opens with the caret in its editable side.
+    await renderLoaded();
+    const editor = document.createElement("textarea");
+    editor.className = "diff-editor-input";
+    document.body.appendChild(editor);
+    editor.focus();
+
+    fireEvent.keyDown(editor, { key: "F7" });
+    expect(useDiffStore.getState().activeChunk).not.toBe(-1);
+
+    fireEvent.keyDown(editor, { key: "ArrowDown", altKey: true });
+    expect(mocks.request).toHaveBeenCalledWith("stepDiffFile", { delta: 1 });
+    editor.remove();
+  });
+
   it("brings the panes back together when sync scrolling is switched on", async () => {
     // Vertically, re-coupling snaps the left pane to the axis at once. It has
     // to mean the same thing sideways, or the split view sits visibly

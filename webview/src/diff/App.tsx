@@ -556,27 +556,31 @@ export function DiffApp() {
             return;
           }
         }
+        // Stepping works from the editor too: a working-tree diff opens with
+        // the caret in its editable side, and the editor claims neither key.
+        if (event.key === "F7") {
+          stepRef.current(event.shiftKey ? -1 : 1);
+          event.preventDefault();
+          return;
+        }
+        if (
+          event.altKey &&
+          (event.key === "ArrowUp" || event.key === "ArrowDown")
+        ) {
+          void bridge.request("stepDiffFile", {
+            delta: event.key === "ArrowDown" ? 1 : -1,
+          });
+          event.preventDefault();
+          return;
+        }
       }
       if (editableTarget) return;
-      if (event.key === "F7") {
-        stepRef.current(event.shiftKey ? -1 : 1);
-        event.preventDefault();
-      }
       if (
         (event.metaKey || event.ctrlKey) &&
         (event.key === "z" || event.key === "Z")
       ) {
         if (event.shiftKey) useDiffStore.getState().redo();
         else useDiffStore.getState().undo();
-        event.preventDefault();
-      }
-      if (
-        event.altKey &&
-        (event.key === "ArrowUp" || event.key === "ArrowDown")
-      ) {
-        void bridge.request("stepDiffFile", {
-          delta: event.key === "ArrowDown" ? 1 : -1,
-        });
         event.preventDefault();
       }
     };
