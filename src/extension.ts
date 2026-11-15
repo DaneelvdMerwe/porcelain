@@ -133,6 +133,31 @@ export function withProgress(
   });
 }
 
+/**
+ * Open the active repository's first working-tree change, the whole change
+ * against HEAD as the Commit panel opens it. False when there is no active
+ * repository or nothing has changed.
+ */
+export async function openFirstWorkingChange(
+  repoRegistry: RepoRegistry,
+  open: (ctx: RequestContext, filePath: string) => Promise<void>,
+): Promise<boolean> {
+  const runtime = repoRegistry.getActive();
+  if (!runtime) return false;
+  const [first] = await runtime.gitService.getWorkingTreeChanges();
+  if (!first) return false;
+  await open(
+    {
+      repoId: runtime.descriptor.id,
+      repo: runtime.descriptor,
+      paths: runtime.paths,
+      gitService: runtime.gitService,
+    },
+    first.path,
+  );
+  return true;
+}
+
 /** Refresh Git Log surfaces bound to the currently active repository only. */
 export function broadcastActiveRepoLogRefresh(
   messageRouter: MessageRouter,
@@ -336,6 +361,21 @@ export async function activate(context: vscode.ExtensionContext) {
         );
       }
     }),
+    vscode.commands.registerCommand(
+      "porcelain.openFirstWorkingChange",
+      async () => {
+        const opened = await openFirstWorkingChange(
+          repoRegistry,
+          (ctx, filePath) => openWorkingFileDiff(ctx, filePath, undefined),
+        );
+        if (!opened) {
+          void vscode.window.setStatusBarMessage(
+            "$(info) No local changes.",
+            3000,
+          );
+        }
+      },
+    ),
     vscode.commands.registerCommand("porcelain.openConflicts", () => {
       const runtime = repoRegistry.getActive();
       if (!runtime) return;

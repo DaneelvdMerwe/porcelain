@@ -137,6 +137,11 @@
         "category": "Porcelain"
       },
       {
+        "command": "porcelain.openFirstWorkingChange",
+        "title": "Open First Local Change",
+        "category": "Porcelain"
+      },
+      {
         "command": "porcelain.openPushPanel",
         "title": "Push...",
         "icon": "$(cloud-upload)",
