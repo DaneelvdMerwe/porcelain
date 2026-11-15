@@ -414,7 +414,8 @@ export type EventType =
   | "activeRepoChanged"
   | "reposChanged"
   | "configChanged"
-  | "windowStateChanged";
+  | "windowStateChanged"
+  | "editSourceRequested";
 
 export interface RemoteBranchGroup {
   remote: string;

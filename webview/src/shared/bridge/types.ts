@@ -423,7 +423,8 @@ export type EventType =
   | "activeRepoChanged"
   | "reposChanged"
   | "configChanged"
-  | "windowStateChanged";
+  | "windowStateChanged"
+  | "editSourceRequested";
 
 /**
  * Request scope. "repo" (default) binds the call to the active repo context;

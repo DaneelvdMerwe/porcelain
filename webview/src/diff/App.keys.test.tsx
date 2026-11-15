@@ -10,10 +10,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
+  onEvent: vi.fn(() => () => {}),
 }));
 
 vi.mock("../shared/bridge", () => ({
-  bridge: { request: mocks.request, onEvent: vi.fn(() => () => {}) },
+  bridge: { request: mocks.request, onEvent: mocks.onEvent },
 }));
 
 import { useDiffStore } from "../shared/store/diff-store";
@@ -142,5 +143,24 @@ describe("diff keyboard bindings", () => {
     fireEvent.keyDown(leftPane, { key: "ArrowDown", altKey: true });
 
     expect(mocks.request).toHaveBeenCalledWith("stepDiffFile", { delta: 1 });
+  });
+
+  it("runs Edit Source when the host asks for it", async () => {
+    // The host's Edit Source command cannot see the webview's caret, so it
+    // sends an event and the diff opens the file itself.
+    await renderLoaded();
+    const handlers = mocks.onEvent.mock.calls.map(
+      ([handler]) => handler as (event: string, data: unknown) => void,
+    );
+    act(() => {
+      for (const handler of handlers) handler("editSourceRequested", null);
+    });
+
+    await waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith(
+        "openFile",
+        expect.objectContaining({ filePath: "a.txt" }),
+      ),
+    );
   });
 });

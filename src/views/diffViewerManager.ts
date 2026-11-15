@@ -296,6 +296,17 @@ export class DiffViewerManager {
     );
   }
 
+  /**
+   * Ask the open diff to run its Edit Source. The caret lives in the webview,
+   * so the host cannot open the file at it by itself. False when no diff is
+   * open.
+   */
+  requestEditSource(): boolean {
+    if (!this.panel) return false;
+    this.messageRouter.broadcastEvent("editSourceRequested", null);
+    return true;
+  }
+
   dispose(): void {
     this.settingsListener.dispose();
     this.windowStateListener.dispose();

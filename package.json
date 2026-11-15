@@ -306,6 +306,11 @@
         "when": "editorFocus"
       },
       {
+        "command": "porcelain.editSource",
+        "key": "f4",
+        "when": "activeWebviewPanelId == 'porcelain.diff' && !sideBarFocus && !panelFocus && !auxiliaryBarFocus || isInDiffEditor && editorTextFocus && resourceScheme != file"
+      },
+      {
         "command": "porcelain.operationsPopup",
         "key": "ctrl+alt+g",
         "mac": "cmd+alt+g"

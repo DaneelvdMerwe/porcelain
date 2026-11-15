@@ -367,7 +367,12 @@ export async function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand("porcelain.editSource", async () => {
       const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
+      if (!editor) {
+        // The Porcelain diff viewer is a webview, so it is never the active
+        // text editor; hand the request to it.
+        diffViewer.requestEditSource();
+        return;
+      }
 
       const uri = editor.document.uri;
       const line = editor.selection.active.line;

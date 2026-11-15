@@ -213,6 +213,25 @@ export function DiffApp() {
   const saveRef = useRef(save);
   saveRef.current = save;
 
+  const editSource = useCallback(() => {
+    // The caret names a line of the in-memory buffer, so unsaved edits
+    // have to reach the file before the native editor opens on it;
+    // a failed save leaves its own error up and opens nothing.
+    void saveRef.current().then((saved) => {
+      if (!saved) return;
+      const position = editSourcePosition(useDiffStore.getState());
+      void bridge.request("openFile", { filePath, ...(position ?? {}) });
+    });
+  }, [filePath]);
+
+  // The host's Edit Source command reaches the diff this way: the viewer is a
+  // webview, never VS Code's active text editor.
+  useEffect(() => {
+    return bridge.onEvent((event) => {
+      if (event === "editSourceRequested") editSource();
+    });
+  }, [editSource]);
+
   // The settings channel. The host seeds the values on the root element and
   // broadcasts every later change; the store holds them so the header can
   // say how the dirty dot will clear. Seeded here rather than at module
@@ -1016,16 +1035,7 @@ export function DiffApp() {
     <div className="diff-root">
       <DiffToolbar
         onStep={step}
-        onEditSource={() => {
-          // The caret names a line of the in-memory buffer, so unsaved edits
-          // have to reach the file before the native editor opens on it;
-          // a failed save leaves its own error up and opens nothing.
-          void saveRef.current().then((saved) => {
-            if (!saved) return;
-            const position = editSourcePosition(useDiffStore.getState());
-            void bridge.request("openFile", { filePath, ...(position ?? {}) });
-          });
-        }}
+        onEditSource={editSource}
         onFile={(delta) => void bridge.request("stepDiffFile", { delta })}
       />
       {store.findOpen &&
