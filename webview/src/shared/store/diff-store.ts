@@ -223,6 +223,12 @@ export interface DiffStoreState {
   revealFold: (key: number) => FoldRevealShift;
   swapSides: () => void;
   stepDifference: (delta: number) => void;
+  /**
+   * Whether a step by `delta` would leave the differences: there are none,
+   * or the active one is the last (forward) or the first (backward). With
+   * none active, a step lands on a difference, as stepDifference does.
+   */
+  atDifferenceEdge: (delta: number) => boolean;
   /** Axis position that reveals the active difference, or null when there is none. */
   activeChunkAxis: () => number | null;
 
@@ -829,6 +835,13 @@ function deriveFind(
   };
 }
 
+function differenceIndices(chunks: DiffStoreState["chunks"]): number[] {
+  return chunks
+    .map((chunk, index) => ({ chunk, index }))
+    .filter(({ chunk }) => chunk.kind !== "equal")
+    .map(({ index }) => index);
+}
+
 export const useDiffStore = create<DiffStoreState>((set, get) => ({
   left: "",
   right: "",
@@ -1301,10 +1314,7 @@ export const useDiffStore = create<DiffStoreState>((set, get) => ({
 
   stepDifference: (delta) =>
     set((state) => {
-      const indices = state.chunks
-        .map((chunk, index) => ({ chunk, index }))
-        .filter(({ chunk }) => chunk.kind !== "equal")
-        .map(({ index }) => index);
+      const indices = differenceIndices(state.chunks);
       if (indices.length === 0) return {};
 
       const current = indices.indexOf(state.activeChunk);
@@ -1319,6 +1329,14 @@ export const useDiffStore = create<DiffStoreState>((set, get) => ({
           : (current + delta + indices.length) % indices.length;
       return { activeChunk: indices[next] };
     }),
+
+  atDifferenceEdge: (delta) => {
+    const state = get();
+    const indices = differenceIndices(state.chunks);
+    if (indices.length === 0) return true;
+    const current = indices.indexOf(state.activeChunk);
+    return delta > 0 ? current === indices.length - 1 : current === 0;
+  },
 
   // The two "axis" getters answer in the current view's scroll units — a
   // split-axis position, or a unified row index. Their callers (the toolbar

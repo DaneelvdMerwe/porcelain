@@ -558,8 +558,19 @@ export function DiffApp() {
         }
         // Stepping works from the editor too: a working-tree diff opens with
         // the caret in its editable side, and the editor claims neither key.
+        // Past the last difference, or before the first, F7 goes on to the
+        // next or previous file, as JetBrains' diff viewer does. A diff with
+        // no file list to go on to wraps within the file as before.
         if (event.key === "F7") {
-          stepRef.current(event.shiftKey ? -1 : 1);
+          const delta = event.shiftKey ? -1 : 1;
+          if (useDiffStore.getState().atDifferenceEdge(delta)) {
+            void bridge.request("stepDiffFile", { delta }).then((result) => {
+              const moved = (result as { moved?: boolean } | undefined)?.moved;
+              if (!moved) stepRef.current(delta);
+            });
+          } else {
+            stepRef.current(delta);
+          }
           event.preventDefault();
           return;
         }

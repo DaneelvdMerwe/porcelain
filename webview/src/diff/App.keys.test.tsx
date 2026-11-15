@@ -81,6 +81,60 @@ describe("diff keyboard bindings", () => {
     expect(useDiffStore.getState().activeChunk).not.toBe(-1);
   });
 
+  it("goes on to the next or previous file with F7 at the edge of the differences", async () => {
+    // The fixture has one difference: the first F7 lands on it, the next
+    // one leaves the file, and Shift+F7 from there leaves it backwards.
+    await renderLoaded();
+    const button = screen.getByRole("button", { name: "Next difference" });
+    button.focus();
+
+    fireEvent.keyDown(button, { key: "F7" });
+    expect(useDiffStore.getState().activeChunk).not.toBe(-1);
+    expect(mocks.request).not.toHaveBeenCalledWith("stepDiffFile", {
+      delta: 1,
+    });
+
+    fireEvent.keyDown(button, { key: "F7" });
+    expect(mocks.request).toHaveBeenCalledWith("stepDiffFile", { delta: 1 });
+
+    fireEvent.keyDown(button, { key: "F7", shiftKey: true });
+    expect(mocks.request).toHaveBeenCalledWith("stepDiffFile", { delta: -1 });
+  });
+
+  it("wraps with F7 when there is no file to go on to", async () => {
+    const base = mocks.request.getMockImplementation();
+    mocks.request.mockImplementation((command: string, params: unknown) => {
+      if (command === "getDiffSides") {
+        return Promise.resolve({
+          kind: "text",
+          left: "one\ntwo\nthree\nfour\nfive\n",
+          right: "ONE\ntwo\nthree\nfour\nFIVE\n",
+          filePath: "a.txt",
+          leftRef: "HEAD",
+          rightRef: "",
+          leftLabel: "HEAD",
+          rightLabel: "Working tree",
+          language: "plaintext",
+        });
+      }
+      if (command === "stepDiffFile") return Promise.resolve({ moved: false });
+      return base?.(command, params);
+    });
+    await renderLoaded();
+    const button = screen.getByRole("button", { name: "Next difference" });
+    button.focus();
+
+    fireEvent.keyDown(button, { key: "F7" });
+    const first = useDiffStore.getState().activeChunk;
+    fireEvent.keyDown(button, { key: "F7" });
+    expect(useDiffStore.getState().activeChunk).not.toBe(first);
+
+    fireEvent.keyDown(button, { key: "F7" });
+    await waitFor(() =>
+      expect(useDiffStore.getState().activeChunk).toBe(first),
+    );
+  });
+
   it("routes Alt+ArrowDown to the next file from a focused button", async () => {
     await renderLoaded();
     const button = screen.getByRole("button", { name: "Next file" });
