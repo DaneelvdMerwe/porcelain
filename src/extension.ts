@@ -22,7 +22,12 @@ import {
   RepoSelectionError,
   Serializer,
 } from "./git/repoSelection";
-import type { CommitOptions, CommitSelection, DiffFile } from "./git/types";
+import type {
+  CommitOptions,
+  CommitSelection,
+  DiffFile,
+  WorkingTreeFile,
+} from "./git/types";
 import { registerLogHandlers } from "./messages/logHandlers";
 import { MessageRouter } from "./messages/messageRouter";
 import {
@@ -30,6 +35,7 @@ import {
   type DiffSidesResult,
   ErrorCode,
   type FileVersionsResult,
+  type RequestContext,
 } from "./messages/protocol";
 import {
   registerRefHandlers,
@@ -51,7 +57,7 @@ import {
   isBinaryContent,
   LARGE_DIFF_LINE_LIMIT,
 } from "./views/diffContentClassifier";
-import { DiffEditorManager } from "./views/diffEditorManager";
+import { DiffEditorManager, workingTreeSteps } from "./views/diffEditorManager";
 import { DiffViewerManager, refLabel } from "./views/diffViewerManager";
 import { DiffWindow } from "./views/diffWindow";
 import { noteWrite } from "./views/diskSync";
@@ -2070,14 +2076,13 @@ export async function activate(context: vscode.ExtensionContext) {
     return { success: true };
   });
 
-  messageRouter.handle("showDiffForWorkingFile", async (params, ctx) => {
-    if (!ctx) return NOT_GIT_REPO;
+  /** Show one working-tree diff, and return the changes it was found among. */
+  const showWorkingFileDiff = async (
+    ctx: RequestContext,
+    filePath: string,
+    staged: boolean | undefined,
+  ): Promise<WorkingTreeFile[]> => {
     const workspaceRoot = ctx.repo.rootPath;
-    const filePath = params.filePath as string;
-    // `staged` omitted means the whole change against HEAD. The Commit panel
-    // sends no side because staging is not part of its model.
-    const staged =
-      params.staged === undefined ? undefined : Boolean(params.staged);
     const changes = await ctx.gitService.getWorkingTreeChanges();
     const matching = changes.filter((candidate) => candidate.path === filePath);
     const file =
@@ -2091,10 +2096,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
     const kind = getWorkingTreeDiffKind(staged);
     const resources = getWorkingTreeDiffResources(file, kind);
-    // The panel now shows a working-tree diff; the retained commit file list
-    // no longer describes it, and "next file" stepping it would silently
-    // replace this diff with an unrelated commit's.
-    diffManager.clearNavigation();
     const toUri = (resource: WorkingTreeDiffResource): vscode.Uri => {
       if (resource.source === "workingTree") {
         return vscode.Uri.joinPath(
@@ -2117,6 +2118,42 @@ export async function activate(context: vscode.ExtensionContext) {
       // where the two disagree, and the one the panel always takes.
       `${filePath} (${DIFF_KIND_LABEL[kind.left]} ↔ ${DIFF_KIND_LABEL[kind.right]})`,
     );
+    return changes;
+  };
+
+  /**
+   * Open a working-tree diff and make the rest of the working tree its file
+   * list, so the file stepper walks the changes the way it walks a commit's.
+   */
+  const openWorkingFileDiff = async (
+    ctx: RequestContext,
+    filePath: string,
+    staged: boolean | undefined,
+  ): Promise<void> => {
+    // The panel now shows a working-tree diff; the retained commit file list
+    // no longer describes it, and "next file" stepping it would silently
+    // replace this diff with an unrelated commit's.
+    diffManager.clearNavigation();
+    const changes = await showWorkingFileDiff(ctx, filePath, staged);
+    const steps = workingTreeSteps(changes, staged);
+    diffManager.setWorkingTreeFileList(
+      steps,
+      steps.findIndex(
+        (step) => step.path === filePath && step.staged === staged,
+      ),
+      async (step) => {
+        await showWorkingFileDiff(ctx, step.path, step.staged);
+      },
+    );
+  };
+
+  messageRouter.handle("showDiffForWorkingFile", async (params, ctx) => {
+    if (!ctx) return NOT_GIT_REPO;
+    // `staged` omitted means the whole change against HEAD. The Commit panel
+    // sends no side because staging is not part of its model.
+    const staged =
+      params.staged === undefined ? undefined : Boolean(params.staged);
+    await openWorkingFileDiff(ctx, params.filePath as string, staged);
     return { success: true };
   });
 

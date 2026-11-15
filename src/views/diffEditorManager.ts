@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { PorcelainError, PorcelainErrorCode } from "../git/errors";
 import type { RepoRegistry } from "../git/repoRegistry";
-import type { DiffFile } from "../git/types";
+import type { DiffFile, WorkingTreeFile } from "../git/types";
 import type { DiffWindow } from "./diffWindow";
 import { buildGitContentUri } from "./gitUri";
 
@@ -47,6 +47,32 @@ export function buildDiffTitle(parts: {
   return segments.join(" · ");
 }
 
+/** One step of a working-tree file list: a path, and the side it was opened with. */
+export interface WorkingTreeStep {
+  path: string;
+  staged?: boolean;
+}
+
+/**
+ * The file list a working-tree diff steps through. An omitted side diffs the
+ * whole change against HEAD, so a path that is both staged and modified is
+ * one step, not two; with a side, every row of the working tree is its own.
+ */
+export function workingTreeSteps(
+  changes: WorkingTreeFile[],
+  staged: boolean | undefined,
+): WorkingTreeStep[] {
+  if (staged === undefined) {
+    return [...new Set(changes.map((change) => change.path))].map((path) => ({
+      path,
+    }));
+  }
+  return changes.map((change) => ({
+    path: change.path,
+    staged: change.staged,
+  }));
+}
+
 export class DiffEditorManager {
   /** Current diff navigation state */
   private diffFiles: DiffFile[] = [];
@@ -55,6 +81,15 @@ export class DiffEditorManager {
   private diffIndex = -1;
   private diffBaseRef?: string;
   private diffCherryPickHashes?: string[];
+
+  /**
+   * Working-tree navigation state. Kept apart from the commit list because a
+   * working-tree diff is opened by a different surface, and the host only
+   * knows how to open one through the callback that surface hands over.
+   */
+  private workingTreeSteps: WorkingTreeStep[] = [];
+  private workingTreeIndex = -1;
+  private openWorkingTreeStep?: (step: WorkingTreeStep) => Promise<void>;
 
   constructor(
     private readonly registry: RepoRegistry,
@@ -75,6 +110,42 @@ export class DiffEditorManager {
     this.diffBaseRef = baseRef;
     this.diffCherryPickHashes = cherryPickHashes;
     this.diffIndex = -1;
+    this.clearWorkingTreeNavigation();
+  }
+
+  /**
+   * Set the file list for stepping through working-tree diffs, with the
+   * position of the diff on screen and how to open another entry.
+   */
+  setWorkingTreeFileList(
+    steps: WorkingTreeStep[],
+    index: number,
+    open: (step: WorkingTreeStep) => Promise<void>,
+  ): void {
+    this.workingTreeSteps = steps;
+    this.workingTreeIndex = index;
+    this.openWorkingTreeStep = open;
+  }
+
+  private clearWorkingTreeNavigation(): void {
+    this.workingTreeSteps = [];
+    this.workingTreeIndex = -1;
+    this.openWorkingTreeStep = undefined;
+  }
+
+  private async stepWorkingTree(delta: number): Promise<boolean> {
+    if (this.workingTreeSteps.length === 0 || !this.openWorkingTreeStep) {
+      return false;
+    }
+    const next = Math.min(
+      Math.max(this.workingTreeIndex + delta, 0),
+      this.workingTreeSteps.length - 1,
+    );
+    if (next !== this.workingTreeIndex) {
+      this.workingTreeIndex = next;
+      await this.openWorkingTreeStep(this.workingTreeSteps[next]);
+    }
+    return true;
   }
 
   /** Set current index (when opening a specific file) */
@@ -107,6 +178,9 @@ export class DiffEditorManager {
 
   /** Navigate to next file diff */
   async nextDiff(): Promise<boolean> {
+    if (this.diffFiles.length === 0 && (await this.stepWorkingTree(1))) {
+      return true;
+    }
     if (this.diffFiles.length === 0) {
       void vscode.window.setStatusBarMessage(
         "$(info) No file list available. Open a diff from Changed Files first.",
@@ -121,6 +195,9 @@ export class DiffEditorManager {
 
   /** Navigate to previous file diff */
   async prevDiff(): Promise<boolean> {
+    if (this.diffFiles.length === 0 && (await this.stepWorkingTree(-1))) {
+      return true;
+    }
     if (this.diffFiles.length === 0) {
       void vscode.window.setStatusBarMessage(
         "$(info) No file list available. Open a diff from Changed Files first.",
@@ -158,6 +235,8 @@ export class DiffEditorManager {
     baseRef?: string,
     cherryPickHashes?: string[],
   ): Promise<void> {
+    // A commit diff now holds the panel; a working-tree list must not step it.
+    this.clearWorkingTreeNavigation();
     // The navigation list survives across opens, but the title reads a
     // position from it — so an open that is not the list's current entry
     // must re-anchor in the list, or drop it: a single-file open from
